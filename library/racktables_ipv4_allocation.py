@@ -18,7 +18,7 @@ short_description: Manages IPv4 address allocations in Racktables
 version_added: "2.4"
 
 description:
-    - "Create, update, and delete objects in Racktables"
+    - "Create, update, and delete IPv4 allocations in Racktables"
 
 options:
     object:
@@ -136,6 +136,7 @@ def run_module():
     with connection.cursor() as cursor:
         cursor.execute(rt_allocation_sql,(module.params['object'],module.params['interface']))
         rt_allocation = cursor.fetchone()
+        print(rt_allocation)
         if rt_allocation:
             result['original_object']=rt_allocation[0]
             result['original_interface']=rt_allocation[2]
@@ -158,7 +159,7 @@ def run_module():
             except:
                 module.fail_json(msg="Provided object doesn't exist, please check spelling or create object", **result)
             if rt_allocation:
-                cursor.execute("UPDATE IPv4Allocation SET ip=INET_ATON(%s), type=%s WHERE object_id=%s name=%s;",(module.params['ip'],module.params['type'],object_id,module.params['interface']))
+                cursor.execute("UPDATE IPv4Allocation SET ip=INET_ATON(%s), type=%s WHERE object_id=%s AND name=%s;",(module.params['ip'],module.params['type'],object_id,module.params['interface']))
             if not rt_allocation:
                 cursor.execute("INSERT INTO IPv4Allocation (object_id, ip, name, `type`) VALUES(%s, INET_ATON(%s), %s, %s);",(object_id,module.params['ip'],module.params['interface'],module.params['type']))
         connection.commit()
