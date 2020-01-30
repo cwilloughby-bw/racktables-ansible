@@ -11,9 +11,9 @@ ANSIBLE_METADATA = {
 
 DOCUMENTATION = '''
 ---
-module: racktables_object
+module: racktables_ipv4_allocation
 
-short_description: Manages objects in Racktables
+short_description: Manages IPv4 address allocations in Racktables
 
 version_added: "2.4"
 
@@ -21,25 +21,21 @@ description:
     - "Create, update, and delete objects in Racktables"
 
 options:
-    name:
+    object:
         description:
-            - This is the message to send to the test module
+            - This is the name of the device that this address is assigned to
         required: true
-    label:
+    interface:
         description:
-            - Optional text label for the object
+            - This is the interface name that the address is assigned to on the object
         required: false
+    ip:
+        description:
+            - This is the IP address that will be assigned
+        required: true
     type:
         description:
-            - Object type (defaults to VM)
-        required: false
-    assetnumber:
-        description:
-            - Optional asset tag for the object
-        required: false
-    comment:
-        description:
-            - Optional comment for the object
+            - The type of IP/Interface (regular,shared,virtual,router,point2point)) (Default: regular)
         required: false
     rt_host:
         description:
@@ -67,14 +63,13 @@ author:
 '''
 
 EXAMPLES = '''
-# Make a new object in Racktables
-- name: Create a new Racktables object
-  racktables_object:
+# Assign an IP address to an object
+- name: Assign an IP address to an object
+  racktables_ipv4_allocation:
     name: "test.lab1"
-    label: "testingonly"
-    type: "Server"
-    assetnumber: "123abc"
-    comment: "This is a test server"
+    interface: "eth0"
+    ip: "192.0.2.1"
+    type: "regular"
 '''
 
 RETURN = '''
@@ -103,11 +98,10 @@ def run_module():
     if HAVE_PYMYSQL is False:
         raise AnsibleError("Can't run module racktables_object: module PyMySQL is not installed")
     module_args = dict(
-        name=dict(type='str', required=True),
-        label=dict(type='str', required=False, default=""),
-        type=dict(type='str', required=False, default="VM"),
-        assetnumber=dict(type='str', required=False, default=""),
-        comment=dict(type='str', required=False, default=""),
+        object=dict(type='str', required=True),
+        interface=dict(type='str', required=True),
+        ip=dict(type='str', required=False),
+        type=dict(type='str', required=False, default="regular"),
         rt_host=dict(type='str',required=True),
         rt_port=dict(type='int',required=False,default=3306),
         rt_username=dict(type='str',required=True),
@@ -117,16 +111,14 @@ def run_module():
 
     result = dict(
         changed=False,
-        original_name='',
-        original_label='',
+        original_object='',
+        original_interface='',
+        original_ip='',
         original_type='',
-        original_assetnumber='',
-        original_comment='',
-        name='',
-        label='',
+        object='',
+        interface='',
+        ip='',
         type='',
-        assetnumber='',
-        comment='',
     )
 
     module = AnsibleModule(
@@ -139,43 +131,41 @@ def run_module():
     except:
         raise AnsibleError("An error occured while connecting to your Racktables database, please check your connection info and try again")
 
-    rt_object_sql="SELECT RTO.name,RTO.label,RTO.asset_no,RTO.comment,RTD.dict_value FROM Object RTO, Dictionary RTD WHERE RTD.dict_key=RTO.objtype_id AND RTO.name=%s"
-    rt_object={}
+    rt_allocation_sql="SELECT RTO.name,INET_NTOA(RTIP.ip),RTIP.name,RTIP.type FROM IPv4Allocation RTIP, Object RTO WHERE RTIP.object_id=RTO.id AND RTO.name=%s AND RTIP.name=%s"
+    rt_allocation={}
     with connection.cursor() as cursor:
-        cursor.execute(rt_object_sql,module.params['name'])
-        rt_object = cursor.fetchone()
-        if rt_object:
-            result['original_name']=rt_object[0]
-            result['original_label']=rt_object[1]
-            result['original_assetnumber']=rt_object[2]
-            result['original_comment']=rt_object[3]
-            result['original_type']=rt_object[4]
+        cursor.execute(rt_allocation_sql,(module.params['object'],module.params['interface']))
+        rt_allocation = cursor.fetchone()
+        if rt_allocation:
+            result['original_object']=rt_allocation[0]
+            result['original_interface']=rt_allocation[2]
+            result['original_ip']=rt_allocation[1]
+            result['original_type']=rt_allocation[3]
 
     if module.check_mode:
         module.exit_json(**result)
 
     props_match = False
-    if rt_object:
-        if module.params['label'] == rt_object[1] and module.params['assetnumber'] == rt_object[2] and module.params['comment'] == rt_object[3] and module.params['type'] == rt_object[4]:
+    if rt_allocation:
+        if module.params['object'] == rt_allocation[0] and module.params['interface'] == rt_allocation[2] and module.params['ip'] == rt_allocation[1] and module.params['type'] == rt_allocation[3]:
             props_match = True
     
     if not props_match and not module.check_mode:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT dict_key FROM Dictionary WHERE dict_value=%s",module.params['type'])
+            cursor.execute("SELECT id FROM Object WHERE name=%s",module.params['object'])
             try:
-                objtype_id = cursor.fetchone()[0]
+                object_id = cursor.fetchone()[0]
             except:
-                module.fail_json(msg="Object type doesn't exist or isn't spelled properly", **result)
-            if rt_object:
-                cursor.execute("UPDATE Object SET name=%s, label=%s, objtype_id=%s, asset_no=%s, has_problems='no', comment=%s WHERE name=%s;",(module.params['name'],module.params['label'],objtype_id,module.params['assetnumber'],module.params['comment'],module.params['name']))
-            if not rt_object:
-                cursor.execute("INSERT INTO `Object` (name, label, objtype_id, asset_no, has_problems, comment) VALUES(%s, %s, %s, %s, 'no', %s);",(module.params['name'],module.params['label'],objtype_id,module.params['assetnumber'],module.params['comment']))
+                module.fail_json(msg="Provided object doesn't exist, please check spelling or create object", **result)
+            if rt_allocation:
+                cursor.execute("UPDATE IPv4Allocation SET ip=INET_ATON(%s), type=%s WHERE object_id=%s name=%s;",(module.params['ip'],module.params['type'],object_id,module.params['interface']))
+            if not rt_allocation:
+                cursor.execute("INSERT INTO IPv4Allocation (object_id, ip, name, `type`) VALUES(%s, INET_ATON(%s), %s, %s);",(object_id,module.params['ip'],module.params['interface'],module.params['type']))
         connection.commit()
         result['changed'] = True
-        result['name'] = module.params['name']
-        result['label'] = module.params['label']
-        result['assetnumber'] = module.params['assetnumber']
-        result['comment'] = module.params['comment']
+        result['object'] = module.params['object']
+        result['interface'] = module.params['interface']
+        result['ip'] = module.params['ip']
         result['type'] = module.params['type']
 
     module.exit_json(**result)
