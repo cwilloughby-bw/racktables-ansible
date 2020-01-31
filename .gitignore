@@ -1,3 +1,4 @@
 .vscode/settings.json
 test
 *.pyc
+.DS_Store
