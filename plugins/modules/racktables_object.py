@@ -23,7 +23,7 @@ description:
 options:
     name:
         description:
-            - This is the message to send to the test module
+            - The name of the object
         required: true
     label:
         description:
