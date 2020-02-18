@@ -37,6 +37,11 @@ options:
         description:
             - The type of IP/Interface (regular,shared,virtual,router,point2point)) (Default: regular)
         required: false
+    state:
+        description:
+            - Specify whether the allocation should be present or absent
+        required: false
+        default: present
     rt_host:
         description:
             - Hostname of the database server backing Racktables
@@ -102,6 +107,7 @@ def run_module():
         interface=dict(type='str', required=True),
         ip=dict(type='str', required=False),
         type=dict(type='str', required=False, default="regular"),
+        state=dict(type='str', default='present', choices=['present', 'absent']),
         rt_host=dict(type='str',required=True),
         rt_port=dict(type='int',required=False,default=3306),
         rt_username=dict(type='str',required=True),
@@ -136,7 +142,6 @@ def run_module():
     with connection.cursor() as cursor:
         cursor.execute(rt_allocation_sql,(module.params['object'],module.params['interface']))
         rt_allocation = cursor.fetchone()
-        print(rt_allocation)
         if rt_allocation:
             result['original_object']=rt_allocation[0]
             result['original_interface']=rt_allocation[2]
@@ -151,7 +156,7 @@ def run_module():
         if module.params['object'] == rt_allocation[0] and module.params['interface'] == rt_allocation[2] and module.params['ip'] == rt_allocation[1] and module.params['type'] == rt_allocation[3]:
             props_match = True
     
-    if not props_match and not module.check_mode:
+    if not props_match and not module.check_mode and module.params['state'] == "present":
         with connection.cursor() as cursor:
             cursor.execute("SELECT id FROM Object WHERE name=%s",module.params['object'])
             try:
@@ -168,6 +173,18 @@ def run_module():
         result['interface'] = module.params['interface']
         result['ip'] = module.params['ip']
         result['type'] = module.params['type']
+    elif not module.check_mode and module.params['state'] == "absent":
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT id FROM Object WHERE name=%s",module.params['object'])
+            object_id = cursor.fetchone()[0]
+            cursor.execute("SELECT object_id,name FROM IPv4Allocation WHERE object_id=%s AND name=%s",(object_id,module.params['interface']))
+            allocation = cursor.fetchone()
+            if allocation:
+                cursor.execute("DELETE FROM IPv4Allocation WHERE object_id=%s AND name=%s",(object_id,module.params['interface']))
+                connection.commit()
+                result['changed'] = True
+            else:
+                result['changed'] = False
 
     module.exit_json(**result)
 

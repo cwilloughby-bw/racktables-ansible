@@ -31,8 +31,9 @@ options:
         required: false
     type:
         description:
-            - Object type (defaults to VM)
+            - Object type
         required: false
+        default: VM
     assetnumber:
         description:
             - Optional asset tag for the object
@@ -41,6 +42,11 @@ options:
         description:
             - Optional comment for the object
         required: false
+    state:
+        description:
+            - Specify whether the object should be present or absent
+        required: false
+        default: present
     rt_host:
         description:
             - Hostname of the database server backing Racktables
@@ -108,6 +114,7 @@ def run_module():
         type=dict(type='str', required=False, default="VM"),
         assetnumber=dict(type='str', required=False),
         comment=dict(type='str', required=False, default=""),
+        state=dict(type='str', default='present', choices=['present', 'absent']),
         rt_host=dict(type='str',required=True),
         rt_port=dict(type='int',required=False,default=3306),
         rt_username=dict(type='str',required=True),
@@ -159,7 +166,7 @@ def run_module():
         if module.params['label'] == rt_object[1] and module.params['assetnumber'] == rt_object[2] and module.params['comment'] == rt_object[3] and module.params['type'] == rt_object[4]:
             props_match = True
     
-    if not props_match and not module.check_mode:
+    if not props_match and not module.check_mode and module.params['state'] == "present":
         with connection.cursor() as cursor:
             cursor.execute("SELECT dict_key FROM Dictionary WHERE dict_value=%s",module.params['type'])
             try:
@@ -177,6 +184,16 @@ def run_module():
         result['assetnumber'] = module.params['assetnumber']
         result['comment'] = module.params['comment']
         result['type'] = module.params['type']
+    elif not module.check_mode and module.params['state'] == "absent":
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT id FROM `Object` WHERE name=%s",module.params['name'])
+            objectId = cursor.fetchone()
+            if objectId:
+                cursor.execute("DELETE FROM `Object` WHERE name=%s",module.params['name'])
+                connection.commit()
+                result['changed'] = True
+            else:
+                result['changed'] = False
 
     module.exit_json(**result)
 
