@@ -106,7 +106,7 @@ def run_module():
         name=dict(type='str', required=True),
         label=dict(type='str', required=False, default=""),
         type=dict(type='str', required=False, default="VM"),
-        assetnumber=dict(type='str', required=False, default=""),
+        assetnumber=dict(type='str', required=False),
         comment=dict(type='str', required=False, default=""),
         rt_host=dict(type='str',required=True),
         rt_port=dict(type='int',required=False,default=3306),
