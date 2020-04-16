@@ -2,25 +2,45 @@ from __future__ import (absolute_import, division, print_function)
 __metaclass__ = type
 
 DOCUMENTATION = """
-    lookup: racktables_networks
+    lookup: racktables_network
     author: Chandler Willoughby
     version_added: "0.0"
-    short_description: Lookup networks in Racktables
+    short_description: Lookup networks in Racktables with the provided tags
     requirements:
       - PyMySql (python3 library)
     description:
-      - Returns a list of networks based on the provided tags
+      - Returns a list of networks matching the provided tags
     options:
-      _terms:
-        region: The datacenter region the network is tagged in
-        description: object name as it exists in Racktables
-        required: True
-        type: string
+        tags:
+            description: A list containg the tags that the networks should have
+            required: true
+            type: list
+        rt_host:
+            description: Hostname of the database server backing Racktables
+            required: true
+            type: string
+        rt_port:
+            description: Port for the database connection, defaults to 3306
+            required: false
+            type: integer
+            default: 3306
+        rt_username:
+            description: Username that has administrative access to the racktables database
+            required: true
+            type: string
+        rt_password:
+            description: Password for the administrative user
+            required: true
+            type: string
+        rt_database:
+            description: Name of the database which backs Racktables
+            required: true
+            type: string
 """
 
 EXAMPLES = """
 - name: lookup object network information
-  debug: msg="{{lookup('racktables_networks', ['testhost.lab1'])}}"
+  debug: msg="{{ lookup('racktables_networks', rt_host='rackhost.local', rt_username='rackuser', rt_password='sup3r$3cur3', rt_database='rackdb', tags=('Production')) }}"
 """
 
 RETURN = """
@@ -49,20 +69,18 @@ class LookupModule(LookupBase):
         if HAVE_PYMYSQL is False:
             raise AnsibleError("Can't LOOKUP(racktables_networks): module PyMySQL is not installed")
         self.set_options(var_options=variables, direct=kwargs)
-        rtnet_region=terms[0]
-        rtnet_ipamzone=terms[1]
-        rtnet_ipampurpose=terms[2]
-        rt_params=terms[3]
         result = []
-        connection = pymysql.connect(host=rt_params['host'],user=rt_params['user'],password=rt_params['pass'],db=rt_params['database'])
-        rt_network_sql=("SELECT INET_NTOA(IPv4Network.ip),IPv4Network.mask,IPv4Network.name,VLANIPv4.vlan_id "
-                        "FROM IPv4Network,TagStorage,VLANIPv4 "
-                        "WHERE IPv4Network.id=TagStorage.entity_id AND TagStorage.entity_realm='ipv4net' AND TagStorage.tag_id in ( "
-                        "(SELECT CT.id FROM TagTree PT, TagTree CT WHERE CT.parent_id=PT.id AND PT.tag='Location' AND CT.tag='{}'), "
-                        "(SELECT CT.id FROM TagTree PT, TagTree CT WHERE CT.parent_id=PT.id AND PT.tag='ipam_zone' AND CT.tag='{}'), "
-                        "(SELECT CT.id FROM TagTree PT, TagTree CT WHERE CT.parent_id=PT.id AND PT.tag='ipam_purpose' AND CT.tag='{}')) "
-                        "AND VLANIPv4.ipv4net_id = IPv4Network.id "
-                        "GROUP BY TagStorage.entity_id HAVING count(entity_id)>2").format(rtnet_region,rtnet_ipamzone,rtnet_ipampurpose)
+        try:
+            connection = pymysql.connect(host=self.get_option('rt_host'),port=self.get_option('rt_port'),user=self.get_option('rt_username'),password=self.get_option('rt_password'),db=self.get_option('rt_database'))
+        except Exception as e:
+            raise AnsibleError("Encountered an issue while connecting to the database, this was the original exception: %s" % to_native(e))
+        rt_network_sql_start = "SELECT INET_NTOA(IPv4Network.ip),IPv4Network.mask,IPv4Network.name,VLANIPv4.vlan_id FROM IPv4Network,TagStorage,VLANIPv4 WHERE IPv4Network.id=TagStorage.entity_id AND TagStorage.entity_realm='ipv4net' AND TagStorage.tag_id in ( "
+        rt_network_sql_tags = ""
+        for tag in self.get_option('tags'):
+            rt_network_sql_tags += "(SELECT id FROM TagTree WHERE tag='{}'),".format(tag)
+        rt_network_sql_tags = rt_network_sql_tags[:-1]
+        rt_network_sql_end = ") AND VLANIPv4.ipv4net_id = IPv4Network.id GROUP BY TagStorage.entity_id HAVING count(entity_id)>{}".format(len(self.get_option('tags'))-1)
+        rt_network_sql = rt_network_sql_start + rt_network_sql_tags + rt_network_sql_end
         with connection.cursor() as cursor:
             cursor.execute(rt_network_sql)
             rtNetworks = cursor.fetchall()
