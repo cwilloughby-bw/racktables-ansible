@@ -74,7 +74,7 @@ class LookupModule(LookupBase):
             connection = pymysql.connect(host=self.get_option('rt_host'),port=self.get_option('rt_port'),user=self.get_option('rt_username'),password=self.get_option('rt_password'),db=self.get_option('rt_database'))
         except Exception as e:
             raise AnsibleError("Encountered an issue while connecting to the database, this was the original exception: %s" % to_native(e))
-        rt_network_sql_start = "SELECT INET_NTOA(IPv4Network.ip),IPv4Network.mask,IPv4Network.name,VLANIPv4.vlan_id FROM IPv4Network,TagStorage,VLANIPv4 WHERE IPv4Network.id=TagStorage.entity_id AND TagStorage.entity_realm='ipv4net' AND TagStorage.tag_id in ( "
+        rt_network_sql_start = "SELECT INET_NTOA(IPv4Network.ip),IPv4Network.mask,IPv4Network.name,VLANIPv4.vlan_id,IPv4Network.id FROM IPv4Network,TagStorage,VLANIPv4 WHERE IPv4Network.id=TagStorage.entity_id AND TagStorage.entity_realm='ipv4net' AND TagStorage.tag_id in ( "
         rt_network_sql_tags = ""
         for tag in self.get_option('tags'):
             rt_network_sql_tags += "(SELECT id FROM TagTree WHERE tag='{}'),".format(tag)
@@ -85,9 +85,16 @@ class LookupModule(LookupBase):
             cursor.execute(rt_network_sql)
             rtNetworks = cursor.fetchall()
             for network in rtNetworks:
-              networkObject={"network":"","name":"","vlan":""}
-              networkObject['network'] = ('{}/{}'.format(network[0],network[1]))
-              networkObject['name']=network[2]
-              networkObject['vlan']=network[3]
-              result.append(networkObject)
+                cursor.execute("SELECT TT.tag FROM TagStorage TS, TagTree TT WHERE TS.entity_realm='ipv4net' AND TS.entity_id={} AND TT.id=TS.tag_id;".format(network[4]))
+                tags = cursor.fetchall()
+                flattags = []
+                for sublist in tags:
+                    for item in sublist:
+                        flattags.append(item)
+                networkObject={"network":"","name":"","vlan":""}
+                networkObject['network'] = ('{}/{}'.format(network[0],network[1]))
+                networkObject['name']=network[2]
+                networkObject['vlan']=network[3]
+                networkObject['tags']=flattags
+                result.append(networkObject)
         return result
