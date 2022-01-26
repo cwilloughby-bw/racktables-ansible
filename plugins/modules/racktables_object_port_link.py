@@ -11,23 +11,31 @@ ANSIBLE_METADATA = {
 
 DOCUMENTATION = '''
 ---
-module: racktables_object_link
+module: racktables_object_port_link
 
-short_description: Manages parent/child object relationships in Racktables
+short_description: Link object ports in Racktables
 
 version_added: "2.4"
 
 description:
-    - "Create, update, and delete objects in Racktables"
+    - "Link object ports in Racktables"
 
 options:
-    parent:
+    object-a:
         description:
-            - The name of the parent object
+            - The name of object A
         required: true
-    child:
+    port-a:
         description:
-            - The name of the child object
+            - The name of the port on object A
+        required: true
+    object-b:
+        description:
+            - The name of object B
+        required: true
+    port-b:
+        description:
+            - The name of the port on object B
         required: true
     state:
         description:
@@ -60,9 +68,9 @@ author:
 '''
 
 EXAMPLES = '''
-# Link two objects in Racktables
-- name: Link two objects
-  racktables_object_link:
+# Make a new object in Racktables
+- name: Create a new Racktables object
+  racktables_object:
     parent: "test.lab1",
     child: "test-child.lab1"
 '''
