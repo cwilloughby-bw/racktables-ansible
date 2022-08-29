@@ -74,7 +74,7 @@ class LookupModule(LookupBase):
             connection = pymysql.connect(host=self.get_option('rt_host'),port=self.get_option('rt_port'),user=self.get_option('rt_username'),password=self.get_option('rt_password'),db=self.get_option('rt_database'))
         except Exception as e:
             raise AnsibleError("Encountered an issue while connecting to the database, this was the original exception: %s" % to_native(e))
-        rt_vlan_sql = "SELECT vdesc.vlan_id, vdesc.vlan_descr  FROM VLANDomain vdom, VLANDescription vdesc WHERE vdom.description = {} and vdesc.domain_id = vdom.id "
+        rt_vlan_sql = "SELECT vdesc.vlan_id, vdesc.vlan_descr  FROM VLANDomain vdom, VLANDescription vdesc WHERE vdom.description = '{}' and vdesc.domain_id = vdom.id "
         with connection.cursor() as cursor:
             cursor.execute(rt_vlan_sql.format(self.get_option('domain')))
             rtVlans = cursor.fetchall()
